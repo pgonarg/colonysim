@@ -69,8 +69,8 @@ public class Pathfinding : MonoBehaviour
             return;
         }
 
-        gridWidth = TileSystem.Instance.mapWidth;
-        gridHeight = TileSystem.Instance.mapHeight;
+        gridWidth = TileSystem.Instance.width;
+        gridHeight = TileSystem.Instance.height;
 
         grid = new PathNode[gridWidth, gridHeight];
 
@@ -79,15 +79,9 @@ public class Pathfinding : MonoBehaviour
         {
             for (int y = 0; y < gridHeight; y++)
             {
-                Tile tile = TileSystem.Instance.GetTile(x, y);
-                if (tile != null)
-                {
-                    grid[x, y] = new PathNode(new Vector2Int(x, y), tile.walkable);
-                }
-                else
-                {
-                    grid[x, y] = new PathNode(new Vector2Int(x, y), false);
-                }
+                Vector2Int tilePos = new Vector2Int(x, y);
+                bool isWalkable = TileSystem.Instance.IsTileWalkable(tilePos);
+                grid[x, y] = new PathNode(tilePos, isWalkable);
             }
         }
     }
@@ -310,7 +304,7 @@ public class Pathfinding : MonoBehaviour
 
         for (int i = 0; i < path.Count - 1; i++)
         {
-            Vector3 start = TileSystem.Instance.TileToWorldPosition(path[i]) + new Vector3(0.5f, 0.5f, 0);
+            Vector3 start = TileSystem.Instance.GetWorldPosition(path[i]);
             Vector3 end = TileSystem.Instance.TileToWorldPosition(path[i + 1]) + new Vector3(0.5f, 0.5f, 0);
             Debug.DrawLine(start, end, Color.red, 1f);
         }

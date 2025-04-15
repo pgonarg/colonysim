@@ -101,7 +101,7 @@ public class WorldManager : MonoBehaviour
         // Wait for Pathfinding to initialize
         if (pathfinding != null)
         {
-           yield return new WaitUntil(() => tileSystem.IsInitialized());
+           yield return new WaitUntil(() => tileSystem.IsInitialized);
         }
         
         // Initialize default designated areas
@@ -415,7 +415,7 @@ public class WorldManager : MonoBehaviour
             // Update pathfinding if available
             if (pathfinding != null)
             {
-                pathfinding.UpdateNode(position, false);
+                pathfinding.UpdateNode(position.x, position.y, false);
             }
         }
         
@@ -459,7 +459,7 @@ public class WorldManager : MonoBehaviour
                 // Update pathfinding if available
                 if (pathfinding != null)
                 {
-                    pathfinding.UpdateNode(position, true);
+                    pathfinding.UpdateNode(position.x, position.y, false);
                 }
             }
             

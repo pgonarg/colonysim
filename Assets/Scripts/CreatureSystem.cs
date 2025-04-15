@@ -123,6 +123,21 @@ public class Creature : MonoBehaviour
         CreateActionIndicator();
     }
 
+    private void CompleteWork()
+    {
+        // Implementation for completing work
+        // This will depend on what work is being done
+        Debug.Log($"{creatureName} completed work");
+
+        // Apply any effects from the work
+        // e.g., create items, update world state, etc.
+    }
+
+    public List<Item> GetInventoryItems()
+    {
+        return new List<Item>(inventory);
+    }
+
     private void Start()
     {
         if (definition == null)
@@ -1353,9 +1368,9 @@ public class Creature : MonoBehaviour
         }
 
         // For furniture, try to add as user
-        if (structure is FurnitureItem furniture)
+        FurnitureItem furniture = structure as FurnitureItem;
         {
-            if (!furniture.AddUser(this))
+            if (!furniture.AddUser(this) && (furniture != null))
             {
                 // Furniture is full
                 SetState(CreatureState.Idle);
@@ -1639,6 +1654,7 @@ public class CreatureBrain : MonoBehaviour
     // Try idle behaviors when nothing else to do
     private bool TryIdleBehavior()
     {
+        Vector2Int currentPos = TileSystem.Instance.GetTilePosition(creature.transform.position);
         // Random chance for different idle behaviors
         float roll = Random.value;
 
@@ -1708,7 +1724,16 @@ public class CreatureBrain : MonoBehaviour
                         currentObjective = CreatureObjective.HaulItem;
                         creature.targetItem = job.targetItem;
                         creature.targetPosition = job.targetPosition;
-                        creature.MoveTo(TileSystem.Instance.GetTilePosition(job.targetItem.transform.position));
+                        WorldItemVisual itemVisual = WorldManager.Instance.FindItemVisual(job.targetItem);
+                        if (itemVisual != null)
+                        {
+                            creature.MoveTo(TileSystem.Instance.GetTilePosition(itemVisual.transform.position));
+                        }
+                        else
+                        {
+                            // Handle case where item's position isn't known
+                            Debug.Log("Position unknown");
+                        }
                         return true;
 
                     case JobType.Gather:
@@ -1741,6 +1766,7 @@ public class CreatureBrain : MonoBehaviour
     // Address a specific need
     private void AddressNeed(Need need)
     {
+        Vector2Int currentPos = TileSystem.Instance.GetTilePosition(creature.transform.position);
         if (need == null) return;
 
         targetNeedID = need.definition.needID;
@@ -1787,7 +1813,7 @@ public class CreatureBrain : MonoBehaviour
 
                 currentObjective = CreatureObjective.None;
                 creature.MoveTo(randomPos);
-                return true;
+                return;
             }
             Vector2Int randomPos = GetRandomNearbyPosition(currentPos, 10);
             creature.MoveTo(randomPos);
@@ -1797,6 +1823,7 @@ public class CreatureBrain : MonoBehaviour
     // Find appropriate location to satisfy a need
     private Vector2Int FindLocationForNeed(Need need)
     {
+        Vector2Int currentPos = TileSystem.Instance.GetTilePosition(creature.transform.position);
         if (need == null) return Vector2Int.zero;
 
         string needID = need.definition.needID;
@@ -1810,7 +1837,7 @@ public class CreatureBrain : MonoBehaviour
 
             currentObjective = CreatureObjective.None;
             creature.MoveTo(randomPos);
-            return true;
+            return GetRandomNearbyPosition(currentPos, 10);
         }
 
         // First try to find a structure that satisfies this need
