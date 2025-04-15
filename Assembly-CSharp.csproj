@@ -59,12 +59,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\Scripts\WorldManager.cs" />
+    <Compile Include="Assets\Scripts\AbilitySystem.cs" />
     <Compile Include="Assets\Scripts\Pathfinding.cs" />
-    <Compile Include="Assets\Scripts\StockpileSystem.cs" />
+    <Compile Include="Assets\Scripts\CreatureSystem.cs" />
+    <Compile Include="Assets\Scripts\ItemSystem.cs" />
+    <Compile Include="Assets\Scripts\NeedSystem.cs" />
+    <Compile Include="Assets\Scripts\TagSystem.cs" />
     <Compile Include="Assets\Scripts\ActionIndicator.cs" />
     <Compile Include="Assets\Scripts\TileSystem.cs" />
-    <Compile Include="Assets\Scripts\ItemTagSystem.cs" />
-    <Compile Include="Assets\Scripts\Creature.cs" />
     <Compile Include="Assets\Scripts\CameraController.cs" />
   </ItemGroup>
   <ItemGroup>

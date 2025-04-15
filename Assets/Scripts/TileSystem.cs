@@ -2,580 +2,549 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum TileType
-{
-    Ground,
-    Wall,
-    FoodSource,
-    Stockpile,
-    SocialArea,
-    Structure
-}
-
-public class Tile
-{
-    public Vector2Int position;
-    public TileType type;
-    public bool walkable;
-    public float foodAmount;
-    public GameObject tileObject;
-    public SpriteRenderer spriteRenderer;
-
-    // Item and structure properties
-    public Item placedItem;
-    public Structure structure;
-    public bool isInUse = false;
-    public Creature userCreature;
-
-    // For tracking tile occupation by actions
-    private Dictionary<CreatureState, Creature> occupyingCreatures = new Dictionary<CreatureState, Creature>();
-
-    public Tile(Vector2Int pos, TileType tileType, bool isWalkable)
-    {
-        position = pos;
-        type = tileType;
-        walkable = isWalkable;
-        foodAmount = type == TileType.FoodSource ? Random.Range(50f, 100f) : 0f;
-    }
-
-    public bool HasFood()
-    {
-        return type == TileType.FoodSource && foodAmount > 0f;
-    }
-
-    public float GatherFood(float amount)
-    {
-        float gathered = Mathf.Min(amount, foodAmount);
-        foodAmount -= gathered;
-
-        // If depleted, regrow after some time
-        if (foodAmount <= 0f && type == TileType.FoodSource)
-        {
-            foodAmount = 0f;
-            // Food source will regrow in WorldManager
-        }
-
-        return gathered;
-    }
-
-    // Methods for tile occupation
-    public bool CanOccupyForState(CreatureState state, Creature creature)
-    {
-        // Moving states can share tiles
-        if (state == CreatureState.MovingToFood || state == CreatureState.MovingToSleep ||
-            state == CreatureState.MovingToDrink || state == CreatureState.MovingToSocial ||
-            state == CreatureState.MovingToStockpile)
-        {
-            return walkable;
-        }
-
-        // Action states require exclusive tile use
-        return walkable && !occupyingCreatures.ContainsKey(state);
-    }
-
-    public bool OccupyForState(CreatureState state, Creature creature)
-    {
-        // Moving states don't actually occupy
-        if (state == CreatureState.MovingToFood || state == CreatureState.MovingToSleep ||
-            state == CreatureState.MovingToDrink || state == CreatureState.MovingToSocial ||
-            state == CreatureState.MovingToStockpile)
-        {
-            return true;
-        }
-
-        // Check if already occupied
-        if (occupyingCreatures.ContainsKey(state))
-        {
-            return false;
-        }
-
-        // Occupy the tile
-        occupyingCreatures[state] = creature;
-        return true;
-    }
-
-    public void ReleaseFromState(CreatureState state, Creature creature)
-    {
-        if (occupyingCreatures.TryGetValue(state, out Creature occupier))
-        {
-            if (occupier == creature)
-            {
-                occupyingCreatures.Remove(state);
-            }
-        }
-    }
-
-    // Structure and item methods
-    public bool CanPlaceStructure()
-    {
-        return type == TileType.Ground && structure == null;
-    }
-
-    public bool PlaceStructure(Structure newStructure)
-    {
-        if (CanPlaceStructure())
-        {
-            structure = newStructure;
-            type = TileType.Structure;
-
-            // Update walkability based on the structure
-            walkable = structure.walkable;
-
-            return true;
-        }
-        return false;
-    }
-
-    public bool RemoveStructure()
-    {
-        if (structure != null)
-        {
-            structure = null;
-            type = TileType.Ground;
-            walkable = true;
-            return true;
-        }
-        return false;
-    }
-
-    public bool CanPlaceItem()
-    {
-        return (type == TileType.Ground || type == TileType.Structure) && placedItem == null;
-    }
-
-    public bool PlaceItem(Item newItem)
-    {
-        if (CanPlaceItem())
-        {
-            // If it's a structure, check if it can hold this item
-            if (type == TileType.Structure && structure != null)
-            {
-                if (!structure.allowedItems.Contains(newItem.tags))
-                {
-                    return false;
-                }
-            }
-
-            placedItem = newItem;
-            return true;
-        }
-        return false;
-    }
-
-    public Item RemoveItem()
-    {
-        Item removedItem = placedItem;
-        placedItem = null;
-        return removedItem;
-    }
-
-    public bool CanBeUsedForNeed(NeedType needType, Creature creature)
-    {
-        // Check if tile is already in use
-        if (isInUse && userCreature != creature)
-        {
-            return false;
-        }
-
-        // Check if there's a placed item that satisfies this need
-        if (placedItem != null && placedItem.CanSatisfyNeed(needType))
-        {
-            return true;
-        }
-
-        // Check if there's a structure that satisfies this need
-        if (structure != null)
-        {
-            switch (needType)
-            {
-                case NeedType.Sleep:
-                    return structure.providesFor.HasFlag(NeedTags.Sleep);
-                case NeedType.Food:
-                    return structure.providesFor.HasFlag(NeedTags.Food);
-                case NeedType.Drink:
-                    return structure.providesFor.HasFlag(NeedTags.Drink);
-                case NeedType.Socialization:
-                    return structure.providesFor.HasFlag(NeedTags.Socialization);
-            }
-        }
-
-        // Default checks based on tile type
-        switch (needType)
-        {
-            case NeedType.Food:
-                return type == TileType.FoodSource && HasFood();
-            case NeedType.Socialization:
-                return type == TileType.SocialArea;
-            case NeedType.Sleep:
-            case NeedType.Drink:
-                return type == TileType.Ground;
-        }
-
-        return false;
-    }
-
-    public void SetInUse(Creature creature)
-    {
-        isInUse = true;
-        userCreature = creature;
-    }
-
-    public void SetAvailable()
-    {
-        isInUse = false;
-        userCreature = null;
-    }
-}
-
+// Handles map generation and tile management
 public class TileSystem : MonoBehaviour
 {
-    public static TileSystem Instance { get; private set; }
-
-    [Header("Tile Settings")]
-    public int mapWidth = 50;
-    public int mapHeight = 50;
+    [Header("Map Settings")]
+    public int width = 100;
+    public int height = 100;
     public float tileSize = 1f;
-
-    [Header("Tile Sprites")]
-    public Sprite groundSprite;
-    public Sprite wallSprite;
-    public Sprite foodSourceSprite;
-    public Sprite stockpileSprite;
-    public Sprite socialAreaSprite;
-
+    
+    [Header("Tile Prefabs")]
+    public GameObject tilePrefab;
+    public GameObject wallPrefab;
+    
+    [Header("Tile Visuals")]
+    public Sprite[] groundSprites;
+    public Sprite[] wallSprites;
+    
     [Header("Generation Settings")]
-    public float perlinScale = 0.1f;
-    public float wallThreshold = 0.6f;
-    public float foodSourceChance = 0.05f;
-
-    private Tile[,] tiles;
+    public float noiseScale = 0.1f;
+    public float wallThreshold = 0.7f;
+    public int smoothingIterations = 3;
+    public int roomDetectionThreshold = 20;
+    
+    // Tile data
+    private TileData[,] tiles;
+    
+    // Generated map tracking
+    public bool IsInitialized { get; private set; } = false;
+    
+    // Transform for organizing tiles in hierarchy
     private Transform tilesParent;
-    private bool mapGenerated = false;
-
+    
+    // Singleton instance
+    private static TileSystem _instance;
+    
+    // Public property to access the singleton
+    public static TileSystem Instance
+    {
+        get
+        {
+            if (_instance == null)
+            {
+                _instance = FindObjectOfType<TileSystem>();
+                
+                if (_instance == null)
+                {
+                    Debug.LogError("No TileSystem found in scene!");
+                }
+            }
+            
+            return _instance;
+        }
+    }
+    
+    // Make sure only one instance exists
     private void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
+        if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
             return;
         }
+        
+        _instance = this;
+        
+        // Rest of your Awake code...
+    }
 
+    // Start is called before the first frame update
+    void Start()
+    {
+        // Create parent transform
         tilesParent = new GameObject("Tiles").transform;
         tilesParent.SetParent(transform);
-    }
-
-    private void Start()
-    {
+        
+        // Generate map
         GenerateMap();
     }
-
-    public bool IsMapGenerated()
-    {
-        return mapGenerated;
-    }
-
+    
+    // Generate the map
     public void GenerateMap()
     {
-        tiles = new Tile[mapWidth, mapHeight];
-
-        // Generate perlin noise map
-        float offsetX = Random.Range(0f, 1000f);
-        float offsetY = Random.Range(0f, 1000f);
-
-        for (int x = 0; x < mapWidth; x++)
+        // Initialize tile array
+        tiles = new TileData[width, height];
+        
+        // Generate initial noise map
+        GenerateNoiseMap();
+        
+        // Smooth the map
+        for (int i = 0; i < smoothingIterations; i++)
         {
-            for (int y = 0; y < mapHeight; y++)
-            {
-                // Generate perlin noise value
-                float perlinValue = Mathf.PerlinNoise((x + offsetX) * perlinScale, (y + offsetY) * perlinScale);
-
-                // Determine tile type based on perlin value
-                TileType tileType;
-                bool walkable;
-
-                if (perlinValue > wallThreshold)
-                {
-                    tileType = TileType.Wall;
-                    walkable = false;
-                }
-                else
-                {
-                    // Check for food sources
-                    if (Random.value < foodSourceChance && perlinValue < wallThreshold - 0.1f)
-                    {
-                        tileType = TileType.FoodSource;
-                    }
-                    else
-                    {
-                        tileType = TileType.Ground;
-                    }
-                    walkable = true;
-                }
-
-                // Create tile
-                tiles[x, y] = new Tile(new Vector2Int(x, y), tileType, walkable);
-                CreateTileVisual(tiles[x, y]);
-            }
+            SmoothMap();
         }
-
-        // Create some larger connected areas of walkable space
-        SmoothMap(3);
-
-        // Update visuals after smoothing
-        UpdateTileVisuals();
-
-        mapGenerated = true;
+        
+        // Create room connections
+        ConnectRooms();
+        
+        // Create tile visuals
+        CreateTileVisuals();
+        
+        IsInitialized = true;
         Debug.Log("Map generation complete");
     }
-
-    private void SmoothMap(int iterations)
+    
+    // Generate initial noise map
+    private void GenerateNoiseMap()
     {
-        for (int iteration = 0; iteration < iterations; iteration++)
+        // Random offset for noise
+        float offsetX = Random.Range(0f, 1000f);
+        float offsetY = Random.Range(0f, 1000f);
+        
+        for (int x = 0; x < width; x++)
         {
-            for (int x = 0; x < mapWidth; x++)
+            for (int y = 0; y < height; y++)
             {
-                for (int y = 0; y < mapHeight; y++)
+                // Generate perlin noise
+                float noise = Mathf.PerlinNoise((x + offsetX) * noiseScale, (y + offsetY) * noiseScale);
+                
+                // Determine tile type based on noise
+                bool isWall = noise > wallThreshold;
+                
+                // Create tile data
+                tiles[x, y] = new TileData
                 {
-                    // Count adjacent walls
-                    int adjacentWalls = CountAdjacentWalls(x, y, 1);
-
-                    if (adjacentWalls > 4) // If surrounded by walls
-                    {
-                        tiles[x, y].type = TileType.Wall;
-                        tiles[x, y].walkable = false;
-                    }
-                    else if (adjacentWalls < 3) // If open space
-                    {
-                        // Keep food sources if they already exist
-                        if (tiles[x, y].type != TileType.FoodSource)
-                        {
-                            tiles[x, y].type = TileType.Ground;
-                            tiles[x, y].walkable = true;
-                        }
-                    }
+                    position = new Vector2Int(x, y),
+                    isWall = isWall,
+                    isWalkable = !isWall,
+                    blocksSight = isWall
+                };
+            }
+        }
+        
+        // Ensure border walls
+        CreateBorderWalls();
+    }
+    
+    // Create border walls around the map
+    private void CreateBorderWalls()
+    {
+        for (int x = 0; x < width; x++)
+        {
+            // Bottom wall
+            tiles[x, 0].isWall = true;
+            tiles[x, 0].isWalkable = false;
+            tiles[x, 0].blocksSight = true;
+            
+            // Top wall
+            tiles[x, height - 1].isWall = true;
+            tiles[x, height - 1].isWalkable = false;
+            tiles[x, height - 1].blocksSight = true;
+        }
+        
+        for (int y = 0; y < height; y++)
+        {
+            // Left wall
+            tiles[0, y].isWall = true;
+            tiles[0, y].isWalkable = false;
+            tiles[0, y].blocksSight = true;
+            
+            // Right wall
+            tiles[width - 1, y].isWall = true;
+            tiles[width - 1, y].isWalkable = false;
+            tiles[width - 1, y].blocksSight = true;
+        }
+    }
+    
+    // Smooth the map using cellular automata
+    private void SmoothMap()
+    {
+        for (int x = 1; x < width - 1; x++)
+        {
+            for (int y = 1; y < height - 1; y++)
+            {
+                // Count adjacent walls
+                int wallCount = CountAdjacentWalls(x, y, 1);
+                
+                // Apply cellular automata rules
+                if (wallCount > 4) // If surrounded by walls, become a wall
+                {
+                    tiles[x, y].isWall = true;
+                    tiles[x, y].isWalkable = false;
+                    tiles[x, y].blocksSight = true;
+                }
+                else if (wallCount < 3) // If few walls nearby, become a floor
+                {
+                    tiles[x, y].isWall = false;
+                    tiles[x, y].isWalkable = true;
+                    tiles[x, y].blocksSight = false;
                 }
             }
         }
     }
-
-    private int CountAdjacentWalls(int x, int y, int range)
+    
+    // Count adjacent walls within range
+    private int CountAdjacentWalls(int centerX, int centerY, int range)
     {
-        int count = 0;
-
-        for (int i = -range; i <= range; i++)
+        int wallCount = 0;
+        
+        for (int x = centerX - range; x <= centerX + range; x++)
         {
-            for (int j = -range; j <= range; j++)
+            for (int y = centerY - range; y <= centerY + range; y++)
             {
-                // Skip the center tile
-                if (i == 0 && j == 0)
+                // Skip if out of bounds or if it's the center tile
+                if (x < 0 || y < 0 || x >= width || y >= height || (x == centerX && y == centerY))
+                {
                     continue;
-
-                int nx = x + i;
-                int ny = y + j;
-
-                // Check if out of bounds or wall
-                if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight)
-                {
-                    count++; // Count out of bounds as walls
                 }
-                else if (tiles[nx, ny].type == TileType.Wall)
+                
+                if (tiles[x, y].isWall)
                 {
-                    count++;
+                    wallCount++;
                 }
             }
         }
-
-        return count;
+        
+        return wallCount;
     }
-
-    private void CreateTileVisual(Tile tile)
+    
+    // Connect separated rooms
+    private void ConnectRooms()
     {
-        GameObject tileObj = new GameObject($"Tile_{tile.position.x}_{tile.position.y}");
-        tileObj.transform.SetParent(tilesParent);
-        tileObj.transform.position = new Vector3(tile.position.x * tileSize, tile.position.y * tileSize, 0f);
-
-        SpriteRenderer spriteRenderer = tileObj.AddComponent<SpriteRenderer>();
-
-        // Set the sorting order to ensure proper layering
-        spriteRenderer.sortingOrder = 0; // Base layer for tiles
-
-        tile.tileObject = tileObj;
-        tile.spriteRenderer = spriteRenderer;
-
-        // Set sprite based on tile type
-        UpdateTileSprite(tile);
-    }
-
-    private void UpdateTileVisuals()
-    {
-        for (int x = 0; x < mapWidth; x++)
+        // Find all rooms using flood fill
+        List<List<Vector2Int>> rooms = FindRooms();
+        
+        // Skip if there's only one room
+        if (rooms.Count <= 1)
         {
-            for (int y = 0; y < mapHeight; y++)
-            {
-                UpdateTileSprite(tiles[x, y]);
-            }
-        }
-    }
-
-    private void UpdateTileSprite(Tile tile)
-    {
-        if (tile.spriteRenderer == null) return;
-
-        switch (tile.type)
-        {
-            case TileType.Ground:
-                tile.spriteRenderer.sprite = groundSprite;
-                break;
-            case TileType.Wall:
-                tile.spriteRenderer.sprite = wallSprite;
-                break;
-            case TileType.FoodSource:
-                tile.spriteRenderer.sprite = foodSourceSprite;
-                // Optionally adjust transparency based on food amount
-                Color foodColor = tile.spriteRenderer.color;
-                foodColor.a = Mathf.Lerp(0.5f, 1f, tile.foodAmount / 100f);
-                tile.spriteRenderer.color = foodColor;
-                break;
-            case TileType.Stockpile:
-                tile.spriteRenderer.sprite = stockpileSprite;
-                break;
-            case TileType.SocialArea:
-                tile.spriteRenderer.sprite = socialAreaSprite;
-                break;
-        }
-    }
-
-    public void SetTileType(int x, int y, TileType newType)
-    {
-        if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight)
             return;
-
-        // Don't change wall types
-        if (tiles[x, y].type == TileType.Wall)
-            return;
-
-        // Handle special case for stockpile
-        if (newType == TileType.Stockpile)
-        {
-            // Register with stockpile system
-            if (StockpileSystem.Instance != null)
-            {
-                StockpileSystem.Instance.RegisterStockpileTile(new Vector2Int(x, y));
-            }
         }
-        else if (tiles[x, y].type == TileType.Stockpile)
+        
+        // Sort rooms by size (largest first)
+        rooms.Sort((a, b) => b.Count.CompareTo(a.Count));
+        
+        // Keep track of connected rooms
+        HashSet<int> connectedRooms = new HashSet<int> { 0 }; // Start with the largest room
+        List<Vector2Int> mainRoom = rooms[0];
+        
+        // Connect all rooms to the main room
+        for (int i = 1; i < rooms.Count; i++)
         {
-            // Unregister from stockpile system
-            if (StockpileSystem.Instance != null)
+            if (rooms[i].Count < roomDetectionThreshold)
             {
-                StockpileSystem.Instance.UnregisterStockpileTile(new Vector2Int(x, y));
-            }
-        }
-
-        tiles[x, y].type = newType;
-
-        // Special handling for different tile types
-        if (newType == TileType.FoodSource && tiles[x, y].foodAmount <= 0)
-        {
-            tiles[x, y].foodAmount = Random.Range(50f, 100f);
-        }
-
-        UpdateTileSprite(tiles[x, y]);
-    }
-
-    public Tile GetTile(int x, int y)
-    {
-        if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight)
-            return null;
-
-        return tiles[x, y];
-    }
-
-    public Tile GetTile(Vector2Int position)
-    {
-        return GetTile(position.x, position.y);
-    }
-
-    public List<Tile> GetAllTilesOfType(TileType type)
-    {
-        List<Tile> result = new List<Tile>();
-
-        for (int x = 0; x < mapWidth; x++)
-        {
-            for (int y = 0; y < mapHeight; y++)
-            {
-                if (tiles[x, y].type == type)
+                // Fill small rooms with walls
+                foreach (var tile in rooms[i])
                 {
-                    result.Add(tiles[x, y]);
+                    tiles[tile.x, tile.y].isWall = true;
+                    tiles[tile.x, tile.y].isWalkable = false;
+                    tiles[tile.x, tile.y].blocksSight = true;
                 }
-            }
-        }
-
-        return result;
-    }
-
-    public Tile GetClosestTileOfType(Vector2Int fromPosition, TileType type, bool mustHaveFood = false)
-    {
-        Tile closest = null;
-        float closestDistance = float.MaxValue;
-
-        List<Tile> tilesOfType = GetAllTilesOfType(type);
-
-        foreach (Tile tile in tilesOfType)
-        {
-            if (mustHaveFood && !tile.HasFood())
                 continue;
-
-            float distance = Vector2Int.Distance(fromPosition, tile.position);
-            if (distance < closestDistance)
+            }
+            
+            // Find closest tiles between main room and current room
+            Vector2Int bestTileA = Vector2Int.zero;
+            Vector2Int bestTileB = Vector2Int.zero;
+            int bestDistance = int.MaxValue;
+            
+            foreach (var tileA in mainRoom)
             {
-                closestDistance = distance;
-                closest = tile;
+                foreach (var tileB in rooms[i])
+                {
+                    int distance = Mathf.Abs(tileA.x - tileB.x) + Mathf.Abs(tileA.y - tileB.y);
+                    
+                    if (distance < bestDistance)
+                    {
+                        bestDistance = distance;
+                        bestTileA = tileA;
+                        bestTileB = tileB;
+                    }
+                }
+            }
+            
+            // Create path between the two closest tiles
+            CreatePath(bestTileA, bestTileB);
+            
+            // Add current room to connected rooms
+            connectedRooms.Add(i);
+            
+            // Add current room tiles to main room
+            mainRoom.AddRange(rooms[i]);
+        }
+    }
+    
+    // Find all rooms using flood fill
+    private List<List<Vector2Int>> FindRooms()
+    {
+        List<List<Vector2Int>> rooms = new List<List<Vector2Int>>();
+        bool[,] visited = new bool[width, height];
+        
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (!visited[x, y] && !tiles[x, y].isWall)
+                {
+                    // Found unvisited floor tile, start a new room
+                    List<Vector2Int> room = new List<Vector2Int>();
+                    FloodFill(x, y, visited, room);
+                    
+                    if (room.Count > 0)
+                    {
+                        rooms.Add(room);
+                    }
+                }
             }
         }
-
-        return closest;
+        
+        return rooms;
     }
-
-    public void RegrowFood()
+    
+    // Flood fill algorithm to find connected tiles
+    private void FloodFill(int startX, int startY, bool[,] visited, List<Vector2Int> room)
     {
-        List<Tile> foodSources = GetAllTilesOfType(TileType.FoodSource);
-
-        foreach (Tile tile in foodSources)
+        Queue<Vector2Int> queue = new Queue<Vector2Int>();
+        queue.Enqueue(new Vector2Int(startX, startY));
+        
+        while (queue.Count > 0)
         {
-            // Slowly regrow food
-            if (tile.foodAmount < 100f)
+            Vector2Int tile = queue.Dequeue();
+            
+            // Skip if already visited or wall
+            if (visited[tile.x, tile.y] || tiles[tile.x, tile.y].isWall)
             {
-                tile.foodAmount += Random.Range(0.5f, 2f);
-                tile.foodAmount = Mathf.Min(tile.foodAmount, 100f);
-
-                // Update visual
-                if (tile.spriteRenderer != null)
+                continue;
+            }
+            
+            // Mark as visited and add to room
+            visited[tile.x, tile.y] = true;
+            room.Add(tile);
+            
+            // Check adjacent tiles
+            Vector2Int[] directions = new Vector2Int[]
+            {
+                new Vector2Int(0, 1),  // Up
+                new Vector2Int(1, 0),  // Right
+                new Vector2Int(0, -1), // Down
+                new Vector2Int(-1, 0)  // Left
+            };
+            
+            foreach (var dir in directions)
+            {
+                int newX = tile.x + dir.x;
+                int newY = tile.y + dir.y;
+                
+                // Skip if out of bounds
+                if (newX < 0 || newY < 0 || newX >= width || newY >= height)
                 {
-                    Color foodColor = tile.spriteRenderer.color;
-                    foodColor.a = Mathf.Lerp(0.5f, 1f, tile.foodAmount / 100f);
-                    tile.spriteRenderer.color = foodColor;
+                    continue;
+                }
+                
+                // Add to queue if not visited and not a wall
+                if (!visited[newX, newY] && !tiles[newX, newY].isWall)
+                {
+                    queue.Enqueue(new Vector2Int(newX, newY));
                 }
             }
         }
     }
-
-    public Vector3 TileToWorldPosition(Vector2Int tilePos)
+    
+    // Create a path between two points
+    private void CreatePath(Vector2Int start, Vector2Int end)
     {
-        return new Vector3(tilePos.x * tileSize, tilePos.y * tileSize, 0f);
+        // Simple implementation using modified Bresenham's line algorithm
+        int x = start.x;
+        int y = start.y;
+        int dx = Mathf.Abs(end.x - start.x);
+        int dy = Mathf.Abs(end.y - start.y);
+        int sx = start.x < end.x ? 1 : -1;
+        int sy = start.y < end.y ? 1 : -1;
+        int err = dx - dy;
+        
+        while (x != end.x || y != end.y)
+        {
+            // Carve path (make floor)
+            tiles[x, y].isWall = false;
+            tiles[x, y].isWalkable = true;
+            tiles[x, y].blocksSight = false;
+            
+            // Also carve adjacent tiles to make a wider path
+            for (int nx = x - 1; nx <= x + 1; nx++)
+            {
+                for (int ny = y - 1; ny <= y + 1; ny++)
+                {
+                    if (nx >= 0 && ny >= 0 && nx < width && ny < height)
+                    {
+                        tiles[nx, ny].isWall = false;
+                        tiles[nx, ny].isWalkable = true;
+                        tiles[nx, ny].blocksSight = false;
+                    }
+                }
+            }
+            
+            // Bresenham's algorithm
+            int e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x += sx;
+            }
+            if (e2 < dx)
+            {
+                err += dx;
+                y += sy;
+            }
+        }
     }
-
-    [Header("Mouse Settings")]
-    public Vector2 mousePositionOffset = new Vector2(0.5f, 0.5f);
-
-    public Vector2Int WorldToTilePosition(Vector3 worldPos)
+    
+    // Create visual representation of tiles
+    private void CreateTileVisuals()
     {
-        int x = Mathf.FloorToInt((worldPos.x - mousePositionOffset.x) / tileSize);
-        int y = Mathf.FloorToInt((worldPos.y - mousePositionOffset.y) / tileSize);
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                CreateTileVisual(x, y);
+            }
+        }
+    }
+    
+    // Create visual for a single tile
+    private void CreateTileVisual(int x, int y)
+    {
+        Vector3 position = GetWorldPosition(new Vector2Int(x, y));
+        GameObject tilePrefabToUse = tiles[x, y].isWall ? wallPrefab : tilePrefab;
+        
+        // Create tile game object
+        GameObject tileObj = Instantiate(tilePrefabToUse, position, Quaternion.identity, tilesParent);
+        tileObj.name = $"Tile_{x}_{y}";
+        
+        // Get sprite renderer
+        SpriteRenderer spriteRenderer = tileObj.GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null)
+        {
+            // Select random sprite based on tile type
+            if (tiles[x, y].isWall && wallSprites.Length > 0)
+            {
+                spriteRenderer.sprite = wallSprites[Random.Range(0, wallSprites.Length)];
+            }
+            else if (!tiles[x, y].isWall && groundSprites.Length > 0)
+            {
+                spriteRenderer.sprite = groundSprites[Random.Range(0, groundSprites.Length)];
+            }
+        }
+        
+        // Store reference to game object
+        tiles[x, y].tileObject = tileObj;
+    }
+    
+    // Get the world position for a tile position
+    public Vector3 GetWorldPosition(Vector2Int tilePosition)
+    {
+        return new Vector3(tilePosition.x * tileSize, tilePosition.y * tileSize, 0f);
+    }
+    
+    // Get the tile position for a world position
+    public Vector2Int GetTilePosition(Vector3 worldPosition)
+    {
+        int x = Mathf.FloorToInt(worldPosition.x / tileSize);
+        int y = Mathf.FloorToInt(worldPosition.y / tileSize);
+        
+        // Clamp to map bounds
+        x = Mathf.Clamp(x, 0, width - 1);
+        y = Mathf.Clamp(y, 0, height - 1);
+        
         return new Vector2Int(x, y);
     }
+    
+    // Check if a tile exists at position
+    public bool IsTileExists(Vector2Int position)
+    {
+        return position.x >= 0 && position.y >= 0 && position.x < width && position.y < height;
+    }
+    
+    // Check if a tile is walkable
+    public bool IsTileWalkable(Vector2Int position)
+    {
+        if (!IsTileExists(position))
+            return false;
+        
+        return tiles[position.x, position.y].isWalkable;
+    }
+    
+    // Set tile walkable state
+    public void SetTileWalkable(Vector2Int position, bool walkable)
+    {
+        if (!IsTileExists(position))
+            return;
+        
+        tiles[position.x, position.y].isWalkable = walkable;
+    }
+    
+    // Get tile data
+    public TileData GetTileData(Vector2Int position)
+    {
+        if (!IsTileExists(position))
+            return null;
+        
+        return tiles[position.x, position.y];
+    }
+    
+    // Find all tiles of a certain type (e.g. walkable)
+    public List<Vector2Int> FindTilesOfType(bool isWalkable)
+    {
+        List<Vector2Int> result = new List<Vector2Int>();
+        
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (tiles[x, y].isWalkable == isWalkable)
+                {
+                    result.Add(new Vector2Int(x, y));
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    // Find random walkable tile
+    public Vector2Int GetRandomWalkableTile()
+    {
+        List<Vector2Int> walkableTiles = FindTilesOfType(true);
+        
+        if (walkableTiles.Count > 0)
+        {
+            return walkableTiles[Random.Range(0, walkableTiles.Count)];
+        }
+        
+        // Fallback
+        return new Vector2Int(width / 2, height / 2);
+    }
+}
+
+// Data structure for individual tiles
+public class TileData
+{
+    public Vector2Int position;
+    public bool isWall;
+    public bool isWalkable;
+    public bool blocksSight;
+    public GameObject tileObject;
+    public TerrainTag terrainTag;
+    
+    // Additional properties for gameplay
+    public Dictionary<string, object> customData = new Dictionary<string, object>();
 }

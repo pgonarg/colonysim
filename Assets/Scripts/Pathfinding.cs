@@ -50,8 +50,7 @@ public class Pathfinding : MonoBehaviour
     private IEnumerator InitializeWhenReady()
     {
         yield return new WaitUntil(() => TileSystem.Instance != null &&
-                                         TileSystem.Instance.IsMapGenerated());
-
+                                         TileSystem.Instance.IsInitialized);
         InitializeGrid();
         isInitialized = true;
         Debug.Log("Pathfinding system initialized");

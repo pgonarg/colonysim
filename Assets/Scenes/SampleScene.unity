@@ -408,12 +408,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f89455879c61ad940a50fbb1ca1a67b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  moveSpeed: 20
+  moveSpeed: 100
   zoomSpeed: 2
   minZoom: 2
   maxZoom: 20
+  zoomSpeedScaling: 0.5
   useEdgeScrolling: 1
   edgeScrollThreshold: 20
+  moveSmoothTime: 0.2
+  zoomSmoothTime: 0.2
 --- !u!1 &586541972
 GameObject:
   m_ObjectHideFlags: 0
@@ -446,11 +449,11 @@ MonoBehaviour:
   mapWidth: 50
   mapHeight: 50
   tileSize: 1
-  groundSprite: {fileID: 2130701546, guid: 11eb686da55740344abc34e0792dc809, type: 3}
-  wallSprite: {fileID: 489841024, guid: 11eb686da55740344abc34e0792dc809, type: 3}
-  foodSourceSprite: {fileID: 739139629, guid: 11eb686da55740344abc34e0792dc809, type: 3}
-  stockpileSprite: {fileID: 737515214, guid: 11eb686da55740344abc34e0792dc809, type: 3}
-  socialAreaSprite: {fileID: 1528682930, guid: 11eb686da55740344abc34e0792dc809, type: 3}
+  groundSprite: {fileID: -707709780, guid: 9bb2a2a763b66cf4bbe3ada90789d93c, type: 3}
+  wallSprite: {fileID: 1379040100, guid: 9bb2a2a763b66cf4bbe3ada90789d93c, type: 3}
+  foodSourceSprite: {fileID: 925958408, guid: 9bb2a2a763b66cf4bbe3ada90789d93c, type: 3}
+  stockpileSprite: {fileID: 692426433, guid: 9bb2a2a763b66cf4bbe3ada90789d93c, type: 3}
+  socialAreaSprite: {fileID: 277485902, guid: 9bb2a2a763b66cf4bbe3ada90789d93c, type: 3}
   perlinScale: 0.1
   wallThreshold: 0.6
   foodSourceChance: 0.05
@@ -1786,8 +1789,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   creaturePrefab: {fileID: 1764147832175045920, guid: dee06c8804afa9844a2b475a2813bfaf, type: 3}
   initialCreatureCount: 5
-  creatureSprites:
-  - {fileID: 534939794, guid: 1db962052c382fd4a9efe5aa283c66ea, type: 3}
+  creatureSprites: []
   statusText: {fileID: 0}
   designateStockpileButton: {fileID: 794813642}
   designateSocialAreaButton: {fileID: 1244043250}
